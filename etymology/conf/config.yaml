@@ -1,0 +1,14 @@
+input_path: "input.xlsx"
+new_column_name: "业务类型"
+sheet_names:
+  - "Sheet1"
+  - "Sheet2"
+columns_to_check:
+  - "Column1"
+  - "Column2"
+keyword_map:
+  "整车": "整车业务"
+  "二手车": "二手车业务"
+  "旧车": "二手车业务"
+  "维修": "维修业务"
+output_path: "output.xlsx"
