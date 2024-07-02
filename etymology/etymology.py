@@ -1,7 +1,6 @@
 import pandas as pd
 import yaml
 from openpyxl import load_workbook
-from openpyxl.worksheet.datavalidation import DataValidation
 import os
 
 def classify_vehicle_type(input_path, sheet_names, columns_to_check_map, output_path, new_column_name):
@@ -9,6 +8,8 @@ def classify_vehicle_type(input_path, sheet_names, columns_to_check_map, output_
 
     # 读取 Excel 文件以获取所有 sheet 名称
     xls = pd.ExcelFile(input_path)
+
+    total_processed_rows = 0  # 总处理行数
 
     for sheet_name in sheet_names:
         if sheet_name not in xls.sheet_names:
@@ -49,37 +50,23 @@ def classify_vehicle_type(input_path, sheet_names, columns_to_check_map, output_
 
         # 将结果Series更新到DataFrame的目标列中
         df[new_column_name] = result_series
-        df[new_column_name] = df[new_column_name].fillna('其他')
+
+        # 打印处理进度
+        total_rows = len(df)
+        total_processed_rows += total_rows
+        for i in range(0, total_rows, 1000):
+            print(f"Processed {min(i + 1000, total_rows)} rows out of {total_rows} in sheet '{sheet_name}'")
 
         # 将 DataFrame 写入 Excel 文件
         df.to_excel(writer, sheet_name=sheet_name, index=False)
 
+        print(f"Finished processing {total_rows} rows in sheet '{sheet_name}'.")
+
+    # 保存所有处理后的数据到 Excel
     writer.book.save(output_path)
 
-    # 打开写入业务类型列后的 Excel 文件，添加数据验证
-    wb = load_workbook(output_path)
-
-    for sheet_name in sheet_names:
-        if sheet_name not in wb.sheetnames:
-            continue
-
-        ws = wb[sheet_name]
-
-        # 获取所有业务类型用于数据验证
-        all_types = list(set([item for sublist in columns_to_check_map.values() for item in sublist.values()])) + ['其他']
-        dv = DataValidation(type="list", formula1=f'"{",".join(all_types)}"', showDropDown=True)
-
-        # 获取 '业务类型' 列的列号
-        type_col_idx = df.columns.get_loc(new_column_name) + 1
-
-        # 添加数据验证到业务类型列
-        for row in range(2, ws.max_row + 1):
-            cell = ws.cell(row=row, column=type_col_idx).coordinate
-            dv.add(ws[cell])
-
-        ws.add_data_validation(dv)
-
-    wb.save(output_path)
+    print(f"Total rows processed: {total_processed_rows}")
+    print("Success!")
 
 if __name__ == "__main__":
     import argparse
@@ -107,5 +94,4 @@ if __name__ == "__main__":
 
     classify_vehicle_type(input_path, sheet_names, columns_to_check_map, output_path, new_column_name)
 
-    print("Success!")
     input("Press Enter to exit...")
