@@ -25,28 +25,31 @@ def classify_vehicle_type(input_path, sheet_names, columns_to_check_map, output_
 
         print(f"New column name to be used: {new_column_name}")
 
+        # 创建一个包含所有需要匹配的列的DataFrame
+        combined_columns_df = df[list(columns_to_check_map.keys())].astype(str)
+
+        # 创建一个全为空的Series用于存储结果
+        result_series = pd.Series([None] * len(df), index=df.index)
+
         # 遍历指定的列，检查是否包含关键字
-        for index, row in df.iterrows():
-            if pd.notna(df.at[index, new_column_name]):
-                continue  # 如果新列已有值，跳过此行
+        for column, keyword_map in columns_to_check_map.items():
+            if column not in df.columns:
+                print(f"Column '{column}' 不存在于 sheet '{sheet_name}'，跳过该列")
+                continue
 
-            for column, keyword_map in columns_to_check_map.items():
-                if column not in df.columns:
-                    print(f"Column '{column}' 不存在于 sheet '{sheet_name}'，跳过该列")
-                    continue
+            # 创建一个空的Series用于存储当前列的匹配结果
+            match_series = pd.Series([None] * len(df), index=df.index)
 
-                cell_value = str(row[column])
-                matched = False
-                for keyword, vehicle_type in keyword_map.items():
-                    if keyword in cell_value:
-                        df.at[index, new_column_name] = vehicle_type
-                        matched = True
-                        break
-                if matched:
-                    break
+            for keyword, vehicle_type in keyword_map.items():
+                match_indices = combined_columns_df[column].str.contains(keyword)
+                match_series.loc[match_indices] = vehicle_type
 
-            if pd.isna(df.at[index, new_column_name]):
-                df.at[index, new_column_name] = '其他'
+            # 仅对result_series中为空的项进行更新
+            result_series = result_series.combine_first(match_series)
+
+        # 将结果Series更新到DataFrame的目标列中
+        df[new_column_name] = result_series
+        df[new_column_name] = df[new_column_name].fillna('其他')
 
         # 将 DataFrame 写入 Excel 文件
         df.to_excel(writer, sheet_name=sheet_name, index=False)
@@ -67,17 +70,16 @@ def classify_vehicle_type(input_path, sheet_names, columns_to_check_map, output_
         dv = DataValidation(type="list", formula1=f'"{",".join(all_types)}"', showDropDown=True)
 
         # 获取 '业务类型' 列的列号
-        type_col_idx = len(df.columns)  # 新列在最后，获取最后一列的索引
+        type_col_idx = df.columns.get_loc(new_column_name) + 1
 
         # 添加数据验证到业务类型列
         for row in range(2, ws.max_row + 1):
-            cell = f"{chr(64 + type_col_idx)}{row}"  # chr(65) is 'A'
+            cell = ws.cell(row=row, column=type_col_idx).coordinate
             dv.add(ws[cell])
 
         ws.add_data_validation(dv)
 
     wb.save(output_path)
-
 
 if __name__ == "__main__":
     import argparse
