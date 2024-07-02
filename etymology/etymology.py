@@ -4,8 +4,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 import os
 
-
-def classify_vehicle_type(input_path, sheet_names, columns_to_check, keyword_map, output_path, new_column_name):
+def classify_vehicle_type(input_path, sheet_names, columns_to_check_map, output_path, new_column_name):
     writer = pd.ExcelWriter(output_path, engine='openpyxl')
 
     # 读取 Excel 文件以获取所有 sheet 名称
@@ -20,38 +19,34 @@ def classify_vehicle_type(input_path, sheet_names, columns_to_check, keyword_map
         print(f"Processing sheet: {sheet_name}")
         print(f"DataFrame columns: {df.columns.tolist()}")
 
-        # 确保新列名唯一
-        original_columns = list(df.columns)
-        new_column_full_name = new_column_name
-        while new_column_full_name in original_columns:
-            new_column_full_name += '_new'
+        # 检查新列名是否存在，如果不存在则添加
+        if new_column_name not in df.columns:
+            df[new_column_name] = None
 
-        print(f"New column name to be used: {new_column_full_name}")
-
-        # 初始化新列为 None
-        df[new_column_full_name] = None
-
-        # 检查是否存在指定的列
-        valid_columns = [col for col in columns_to_check if col in df.columns]
-
-        for column in columns_to_check:
-            if column not in valid_columns:
-                print(f"Column '{column}' 不存在于 sheet '{sheet_name}'，跳过该列")
+        print(f"New column name to be used: {new_column_name}")
 
         # 遍历指定的列，检查是否包含关键字
         for index, row in df.iterrows():
-            matched = False
-            for column in valid_columns:
+            if pd.notna(df.at[index, new_column_name]):
+                continue  # 如果新列已有值，跳过此行
+
+            for column, keyword_map in columns_to_check_map.items():
+                if column not in df.columns:
+                    print(f"Column '{column}' 不存在于 sheet '{sheet_name}'，跳过该列")
+                    continue
+
                 cell_value = str(row[column])
+                matched = False
                 for keyword, vehicle_type in keyword_map.items():
                     if keyword in cell_value:
-                        df.at[index, new_column_full_name] = vehicle_type
+                        df.at[index, new_column_name] = vehicle_type
                         matched = True
                         break
                 if matched:
                     break
-            if not matched:
-                df.at[index, new_column_full_name] = '其他'
+
+            if pd.isna(df.at[index, new_column_name]):
+                df.at[index, new_column_name] = '其他'
 
         # 将 DataFrame 写入 Excel 文件
         df.to_excel(writer, sheet_name=sheet_name, index=False)
@@ -68,7 +63,7 @@ def classify_vehicle_type(input_path, sheet_names, columns_to_check, keyword_map
         ws = wb[sheet_name]
 
         # 获取所有业务类型用于数据验证
-        all_types = list(set(keyword_map.values())) + ['其他']
+        all_types = list(set([item for sublist in columns_to_check_map.values() for item in sublist.values()])) + ['其他']
         dv = DataValidation(type="list", formula1=f'"{",".join(all_types)}"', showDropDown=True)
 
         # 获取 '业务类型' 列的列号
@@ -104,12 +99,11 @@ if __name__ == "__main__":
 
     input_path = config['input_path']
     sheet_names = config['sheet_names']
-    columns_to_check = config['columns_to_check']
-    keyword_map = config['keyword_map']
+    columns_to_check_map = config['columns_to_check_map']
     output_path = config['output_path']
     new_column_name = config['new_column_name']
 
-    classify_vehicle_type(input_path, sheet_names, columns_to_check, keyword_map, output_path, new_column_name)
+    classify_vehicle_type(input_path, sheet_names, columns_to_check_map, output_path, new_column_name)
 
     print("Success!")
     input("Press Enter to exit...")
